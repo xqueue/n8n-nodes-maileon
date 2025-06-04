@@ -1,0 +1,35 @@
+{
+  "name": "n8n-nodes-maileon",
+  "version": "1.0.0",
+  "description": "n8n nodes for integrating with Maileon",
+  "author": "Maileon - qtr",
+  "license": "MIT",
+  "main": "dist/Maileon.node.js",
+  "scripts": {
+    "build": "tsc",
+    "postbuild": "ncp src/maileon-logo.png dist/maileon-logo.png",
+    "lint": "eslint . --ext .ts",
+    "prepare": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "n8n",
+    "automation",
+    "integration",
+    "Maileon",
+    "n8n-community-node-package"
+  ],
+  "dependencies": {
+    "n8n-core": "^1.14.1",
+    "n8n-workflow": "^1.82.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/xml2js": "^0.4.14",
+    "eslint": "^9.27.0",
+    "ncp": "^2.0.0",
+    "typescript": "^5.8.3"
+  }
+}

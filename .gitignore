@@ -3,3 +3,7 @@ dist
 .idea
 .DS_STORE
 **/.DS_Store
+*.log
+.env
+.n8n/
+n8n-nodes-maileon-1.0.0.tgz

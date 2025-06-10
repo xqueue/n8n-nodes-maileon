@@ -12,7 +12,9 @@
     "prepare": "npm run build"
   },
   "files": [
-    "dist"
+    "dist/",
+    "package.json",
+    "README.md"
   ],
   "keywords": [
     "n8n",

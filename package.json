@@ -23,8 +23,7 @@
     "Maileon",
     "n8n-community-node-package"
   ],
-  "dependencies": {
-    "n8n-core": "^1.14.1",
+  "peerDependencies": {
     "n8n-workflow": "^1.82.0"
   },
   "devDependencies": {

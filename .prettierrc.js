@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 module.exports = {
 	/**
 	 * https://prettier.io/docs/en/options.html#semicolons

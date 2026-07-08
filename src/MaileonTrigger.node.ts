@@ -5,24 +5,30 @@ import {
     INodeTypeDescription,
     IWebhookResponseData,
     IHttpRequestOptions,
+    NodeConnectionTypes,
 } from 'n8n-workflow';
 
 export class MaileonTrigger implements INodeType {
     description: INodeTypeDescription = {
-        displayName: 'Maileon',
-        name: 'maileon',
-        icon: 'file:maileon-logo.png',
+        displayName: 'Maileon Trigger',
+        name: 'maileonTrigger',
+        icon: {
+            light: 'file:maileon-logo.svg',
+            dark: 'file:maileon-logo-dark.svg',
+        },
         group: ['trigger'],
         version: 1,
-        description: 'Triggers workflow on Maileon (Maileon) webhook events',
+        subtitle: '={{$parameter["eventType"]}}',
+        description: 'Triggers workflow on Maileon webhook events',
         defaults: {
-            name: 'Maileon',
+            name: 'Maileon Trigger',
         },
+        usableAsTool: true,
         inputs: [],
-        outputs: ['main'],
+        outputs: [NodeConnectionTypes.Main],
         credentials: [
             {
-                name: 'MaileonApi',
+                name: 'maileonApi',
                 required: true,
             },
         ],
@@ -41,16 +47,16 @@ export class MaileonTrigger implements INodeType {
                 type: 'options',
                 options: [
                     {
+                        name: 'Bounce',
+                        value: 'bounce',
+                    },
+                    {
                         name: 'Double Opt-In Confirmation',
                         value: 'doi',
                     },
                     {
                         name: 'Unsubscribe',
                         value: 'unsubscription',
-                    },
-                    {
-                        name: 'Bounce',
-                        value: 'bounce',
                     },
                 ],
                 default: 'doi',
@@ -62,7 +68,6 @@ export class MaileonTrigger implements INodeType {
     webhookMethods = {
         default: {
             async checkExists(this: IHookFunctions): Promise<boolean> {
-                const credentials = await this.getCredentials('MaileonApi');
                 const webhookUrl = this.getNodeWebhookUrl('default');
 
                 const eventType = this.getNodeParameter('eventType') as string;
@@ -71,19 +76,19 @@ export class MaileonTrigger implements INodeType {
                     method: 'GET',
                     url: 'https://api.maileon.com/1.0/webhooks',
                     headers: {
-                        Authorization: `Basic ${credentials.apiKey}`,
                         'Content-Type': 'application/json',
                     },
                     json: true,
                 };
 
-                const webhooks = await this.helpers.httpRequest(options);
+                const webhooks = await this.helpers.httpRequestWithAuthentication.call(
+                    this,
+                    'maileonApi',
+                    options,
+                );
 
                 for (const webhook of webhooks) {
-                    if (
-                        webhook.url === webhookUrl &&
-                        webhook.event === eventType
-                    ) {
+                    if (webhook.url === webhookUrl && webhook.event === eventType) {
                         const staticData = this.getWorkflowStaticData('node');
                         staticData.webhookId = webhook.id;
                         return true;
@@ -94,28 +99,27 @@ export class MaileonTrigger implements INodeType {
             },
 
             async create(this: IHookFunctions): Promise<boolean> {
-                const credentials = await this.getCredentials('MaileonApi');
                 const webhookUrl = this.getNodeWebhookUrl('default');
                 const eventType = this.getNodeParameter('eventType') as string;
                 const options: IHttpRequestOptions = {
                     method: 'POST',
                     url: 'https://api.maileon.com/1.0/webhooks',
                     headers: {
-                        Authorization: `Basic ${credentials.apiKey}`,
                         'Content-Type': 'application/json',
                     },
                     body: {
                         event: eventType,
                         url: webhookUrl,
-                        standardFields: [
-                            "email",
-                            "external_id"
-                        ],
+                        standardFields: ['email', 'external_id'],
                     },
                     json: true,
                 };
 
-                const response = await this.helpers.httpRequest(options);
+                const response = await this.helpers.httpRequestWithAuthentication.call(
+                    this,
+                    'maileonApi',
+                    options,
+                );
                 const staticData = this.getWorkflowStaticData('node');
                 staticData.webhookId = response.id;
 
@@ -123,7 +127,6 @@ export class MaileonTrigger implements INodeType {
             },
 
             async delete(this: IHookFunctions): Promise<boolean> {
-                const credentials = await this.getCredentials('MaileonApi');
                 const staticData = this.getWorkflowStaticData('node');
                 const webhookId = staticData.webhookId;
 
@@ -133,13 +136,12 @@ export class MaileonTrigger implements INodeType {
                     method: 'DELETE',
                     url: `https://api.maileon.com/1.0/webhooks/${webhookId}`,
                     headers: {
-                        Authorization: `Basic ${credentials.apiKey}`,
                         'Content-Type': 'application/json',
                     },
                     json: true,
                 };
 
-                await this.helpers.httpRequest(options);
+                await this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', options);
                 delete staticData.webhookId;
                 return true;
             },
@@ -148,7 +150,7 @@ export class MaileonTrigger implements INodeType {
 
     async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
         const req = this.getRequestObject();
-        const body = req.body as Record<string, any>;
+        const body = req.body as Record<string, unknown>;
         const eventType = this.getNodeParameter('eventType') as string;
 
         return {

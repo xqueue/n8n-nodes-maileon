@@ -2,7 +2,10 @@
   "name": "n8n-nodes-maileon",
   "version": "1.0.5",
   "description": "n8n nodes for integrating with Maileon",
-  "author": "Maileon - qtr",
+  "author": {
+    "name": "XQueue GmbH",
+    "email": "robert.toth@xqueue.com"
+  },
   "license": "MIT",
   "homepage": "https://github.com/xqueue/n8n-nodes-maileon",
   "repository": {
@@ -19,8 +22,7 @@
     "lint": "n8n-node lint",
     "lint:fix": "n8n-node lint --fix",
     "release": "n8n-node release",
-    "prepublishOnly": "n8n-node prerelease",
-    "postbuild": "cp dist/src/maileon-logo.svg dist/maileon-logo.svg && cp dist/src/maileon-logo-dark.svg dist/maileon-logo-dark.svg"
+    "prepublishOnly": "n8n-node prerelease"
   },
   "files": [
     "dist"
@@ -41,15 +43,16 @@
     "typescript": "^5.4.5"
   },
   "peerDependencies": {
-    "n8n-workflow": "^2.0.0"
+    "n8n-workflow": "*"
   },
   "n8n": {
+    "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/MaileonApi.credentials.js"
+      "dist/src/MaileonApi.credentials.js"
     ],
     "nodes": [
-      "dist/Maileon.node.js",
-      "dist/MaileonTrigger.node.js"
+      "dist/src/Maileon.node.js",
+      "dist/src/MaileonTrigger.node.js"
     ]
   }
 }

@@ -6,6 +6,7 @@ import {
     INodeTypeDescription,
     JsonObject,
     NodeApiError,
+    NodeConnectionTypes,
 } from 'n8n-workflow';
 
 function decodeXml(value: string): string {
@@ -23,7 +24,9 @@ function getTagValue(xml: string, tag: string): string {
 }
 
 function getTagBlocks(xml: string, tag: string): string[] {
-    return [...xml.matchAll(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi'))].map((match) => match[1]);
+    return [...xml.matchAll(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi'))].map(
+        (match) => match[1],
+    );
 }
 
 function getCustomFieldMap(xml: string): Record<string, string> {
@@ -41,9 +44,17 @@ function getCustomFieldMap(xml: string): Record<string, string> {
     return customMap;
 }
 
-function castToType(type: string, value: any): any {
+function safeJsonParse(value: string): unknown {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return undefined;
+    }
+}
+
+function castToType(type: string, value: unknown): unknown {
     if (type === 'date') {
-        const date = new Date(value);
+        const date = new Date(value as string);
         if (isNaN(date.getTime())) throw new Error(`Invalid date: ${value}`);
         return date.toISOString().split('T')[0];
     }
@@ -53,13 +64,13 @@ function castToType(type: string, value: any): any {
     }
 
     if (type === 'number' || type === 'float') {
-        const num = parseFloat(value);
+        const num = parseFloat(value as string);
         if (isNaN(num)) throw new Error(`Invalid float: ${value}`);
         return num;
     }
 
     if (type === 'integer') {
-        const num = parseInt(value, 10);
+        const num = parseInt(value as string, 10);
         if (isNaN(num)) throw new Error(`Invalid integer: ${value}`);
         return num;
     }
@@ -74,15 +85,14 @@ function castToType(type: string, value: any): any {
                 throw new Error(`Corrupted JSON-like string: ${value}`);
             }
 
-            try {
-                const parsed = JSON.parse(value);
-                if (typeof parsed !== 'object') {
-                    throw new Error('Parsed JSON is not an object or array');
-                }
-                return parsed;
-            } catch (err) {
-                throw new Error(`Invalid JSON string: ${err}`);
+            const parsed = safeJsonParse(value);
+            if (parsed === undefined) {
+                throw new Error(`Invalid JSON string: ${value}`);
             }
+            if (typeof parsed !== 'object') {
+                throw new Error('Parsed JSON is not an object or array');
+            }
+            return parsed;
         }
 
         throw new Error(`Unsupported type for JSON casting: ${typeof value}`);
@@ -114,22 +124,24 @@ const defaultContactFields: { [key: string]: string } = {
 export class Maileon implements INodeType {
     description: INodeTypeDescription = {
         displayName: 'Maileon',
-        name: 'Maileon',
+        name: 'maileon',
         icon: {
-            light:'file:maileon-logo.svg',
-            dark:'file:maileon-logo-dark.svg',
+            light: 'file:maileon-logo.svg',
+            dark: 'file:maileon-logo-dark.svg',
         },
         group: ['transform'],
         version: 1,
+        subtitle: '={{$parameter["operation"]}}',
         description: 'Interact with Maileon API',
         defaults: {
             name: 'Maileon',
         },
-        inputs: ['main'],
-        outputs: ['main'],
+        usableAsTool: true,
+        inputs: [NodeConnectionTypes.Main],
+        outputs: [NodeConnectionTypes.Main],
         credentials: [
             {
-                name: 'MaileonApi',
+                name: 'maileonApi',
                 required: true,
             },
         ],
@@ -138,10 +150,11 @@ export class Maileon implements INodeType {
                 displayName: 'Operation',
                 name: 'operation',
                 type: 'options',
+                noDataExpression: true,
                 options: [
-                    {name: 'Send Contact', value: 'sendContact'},
-                    {name: 'Send Contact Event', value: 'sendContactEvent'},
-                    {name: 'Unsubscribe Contact', value: 'unsubscribeContact'},
+                    { name: 'Send Contact', value: 'sendContact' },
+                    { name: 'Send Contact Event', value: 'sendContactEvent' },
+                    { name: 'Unsubscribe Contact', value: 'unsubscribeContact' },
                 ],
                 default: 'sendContact',
             },
@@ -151,6 +164,7 @@ export class Maileon implements INodeType {
                 type: 'string',
                 required: true,
                 default: '',
+                placeholder: 'name@email.com',
                 description: 'The email address of the contact',
                 displayOptions: {
                     show: {
@@ -159,11 +173,11 @@ export class Maileon implements INodeType {
                 },
             },
             {
-                displayName: 'External id',
+                displayName: 'External ID',
                 name: 'external_id',
                 type: 'string',
                 default: '',
-                description: 'The external id of the contact',
+                description: 'The external ID of the contact',
                 displayOptions: {
                     show: {
                         operation: ['sendContact', 'sendContactEvent', 'unsubscribeContact'],
@@ -199,11 +213,11 @@ export class Maileon implements INodeType {
                 name: 'permission',
                 type: 'options',
                 options: [
-                    {name: 'None', value: 1},
-                    {name: 'Single Opt-In', value: 2},
-                    {name: 'Confirmed Opt-In', value: 3},
-                    {name: 'Double Opt-In', value: 4},
-                    {name: 'Double Opt-In Plus', value: 5},
+                    { name: 'Confirmed Opt-In', value: 3 },
+                    { name: 'Double Opt-In', value: 4 },
+                    { name: 'Double Opt-In Plus', value: 5 },
+                    { name: 'None', value: 1 },
+                    { name: 'Single Opt-In', value: 2 },
                 ],
                 default: 1,
                 displayOptions: {
@@ -213,13 +227,14 @@ export class Maileon implements INodeType {
                 },
             },
             {
-                displayName: 'Sync mode',
+                displayName: 'Sync Mode',
                 name: 'sync_mode',
                 type: 'options',
-                description: 'Specifies the synchronization option in case a contact with the provided email address already exists',
+                description:
+                    'Specifies the synchronization option in case a contact with the provided email address already exists',
                 options: [
-                    {name: 'Update', value: 1},
-                    {name: 'Ignore', value: 2},
+                    { name: 'Ignore', value: 2 },
+                    { name: 'Update', value: 1 },
                 ],
                 default: 1,
                 displayOptions: {
@@ -233,7 +248,7 @@ export class Maileon implements INodeType {
                 name: 'doi',
                 type: 'boolean',
                 default: false,
-                description: 'Only required when permission is set to none',
+                description: 'Whether to send a double opt-in. Only required when permission is set to none.',
                 displayOptions: {
                     show: {
                         operation: ['sendContact', 'sendContactEvent'],
@@ -260,7 +275,7 @@ export class Maileon implements INodeType {
                 displayName: 'Contact Field Mapping',
                 name: 'contactFieldMapping',
                 type: 'fixedCollection',
-                typeOptions: {multipleValues: true},
+                typeOptions: { multipleValues: true },
                 displayOptions: {
                     show: {
                         operation: ['sendContact', 'sendContactEvent'],
@@ -272,9 +287,11 @@ export class Maileon implements INodeType {
                         displayName: 'Fields',
                         values: [
                             {
-                                displayName: 'Field Name',
+                                displayName: 'Field Name or ID',
                                 name: 'field',
                                 type: 'options',
+                                description:
+                                    'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
                                 typeOptions: {
                                     loadOptionsMethod: 'getContactFields',
                                 },
@@ -292,9 +309,11 @@ export class Maileon implements INodeType {
                 default: {},
             },
             {
-                displayName: 'Event Type',
+                displayName: 'Event Type Name or ID',
                 name: 'eventType',
                 type: 'options',
+                description:
+                    'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
                 typeOptions: {
                     loadOptionsMethod: 'getEventTypes',
                 },
@@ -310,7 +329,7 @@ export class Maileon implements INodeType {
                 displayName: 'Event Field Mapping',
                 name: 'eventFieldMapping',
                 type: 'fixedCollection',
-                typeOptions: {multipleValues: true},
+                typeOptions: { multipleValues: true },
                 displayOptions: {
                     show: {
                         operation: ['sendContactEvent'],
@@ -322,9 +341,11 @@ export class Maileon implements INodeType {
                         displayName: 'Fields',
                         values: [
                             {
-                                displayName: 'Field Name',
+                                displayName: 'Field Name or ID',
                                 name: 'field',
                                 type: 'options',
+                                description:
+                                    'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
                                 typeOptions: {
                                     loadOptionsMethod: 'getEventFields',
                                 },
@@ -347,15 +368,14 @@ export class Maileon implements INodeType {
     methods = {
         loadOptions: {
             async getEventTypes(this: ILoadOptionsFunctions) {
-                const credentials = await this.getCredentials('MaileonApi');
-
-                const xmlResponse = await this.helpers.httpRequest({
-                    method: 'GET',
-                    url: 'https://api.maileon.com/1.0/transactions/types',
-                    headers: {
-                        Authorization: `Basic ${credentials.apiKey}`,
+                const xmlResponse = await this.helpers.httpRequestWithAuthentication.call(
+                    this,
+                    'maileonApi',
+                    {
+                        method: 'GET',
+                        url: 'https://api.maileon.com/1.0/transactions/types',
                     },
-                });
+                );
 
                 const types = getTagBlocks(xmlResponse, 'transaction_type');
 
@@ -364,23 +384,23 @@ export class Maileon implements INodeType {
                 return types
                     .map((typeXml) => {
                         const name = getTagValue(typeXml, 'name');
-                        return {name, value: name};
+                        return { name, value: name };
                     })
                     .filter((type) => type.name);
             },
 
             async getEventFields(this: ILoadOptionsFunctions) {
-                const credentials = await this.getCredentials('MaileonApi');
                 const eventTypeKey = this.getNodeParameter('eventType', 0) as string;
                 if (!eventTypeKey) throw new Error('Please select an Event Type before mapping fields.');
 
-                const xmlResponse = await this.helpers.httpRequest({
-                    method: 'GET',
-                    url: `https://api.maileon.com/1.0/transactions/types/${eventTypeKey}`,
-                    headers: {
-                        Authorization: `Basic ${credentials.apiKey}`,
+                const xmlResponse = await this.helpers.httpRequestWithAuthentication.call(
+                    this,
+                    'maileonApi',
+                    {
+                        method: 'GET',
+                        url: `https://api.maileon.com/1.0/transactions/types/${eventTypeKey}`,
                     },
-                });
+                );
 
                 const attributes = getTagBlocks(xmlResponse, 'attribute');
 
@@ -390,7 +410,8 @@ export class Maileon implements INodeType {
                     .map((attrXml) => {
                         const name = getTagValue(attrXml, 'name');
                         const type = getTagValue(attrXml, 'type');
-                        const mandatory = getTagValue(attrXml, 'mandatory') || getTagValue(attrXml, 'required');
+                        const mandatory =
+                            getTagValue(attrXml, 'mandatory') || getTagValue(attrXml, 'required');
 
                         return {
                             name: `${name} (${type})${mandatory === 'true' ? ' *' : ''}`,
@@ -402,14 +423,14 @@ export class Maileon implements INodeType {
             },
 
             async getContactFields(this: ILoadOptionsFunctions) {
-                const credentials = await this.getCredentials('MaileonApi');
-                const xmlResponse = await this.helpers.httpRequest({
-                    method: 'GET',
-                    url: 'https://api.maileon.com/1.0/contacts/fields/custom',
-                    headers: {
-                        Authorization: `Basic ${credentials.apiKey}`,
+                const xmlResponse = await this.helpers.httpRequestWithAuthentication.call(
+                    this,
+                    'maileonApi',
+                    {
+                        method: 'GET',
+                        url: 'https://api.maileon.com/1.0/contacts/fields/custom',
                     },
-                });
+                );
 
                 const standardOptions = Object.entries(defaultContactFields).map(([key, type]) => ({
                     name: `${key} (standard - ${type})`,
@@ -434,110 +455,108 @@ export class Maileon implements INodeType {
     };
 
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+        const items = this.getInputData();
+        const returnData: INodeExecutionData[] = [];
+
+        // Best-effort heartbeat ping; failures must not interrupt processing.
         try {
-            const credentials = await this.getCredentials('MaileonApi');
+            await this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', {
+                method: 'GET',
+                url: 'https://integrations.maileon.com/xsic/ext/n8n/heartbeat.php',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                json: true,
+            });
+        } catch (error) {
+            this.logger.error(String(error));
+        }
 
-            try {
-                await this.helpers.httpRequest({
-                    method: 'GET',
-                    url: 'https://integrations.maileon.com/xsic/ext/n8n/heartbeat.php',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        Authorization: 'Basic ' + credentials.apiKey,
-                    },
-                    json: true,
-                });
-            } catch ($e:string|any) {
-							this.logger.error($e);
-            }
+        const unsubscribeContact = async (i: number, email: string) => {
+            const externalId = this.getNodeParameter('external_id', i, '') as string;
+            const mailingId = this.getNodeParameter('mailingId', i, '') as string;
 
-            const items = this.getInputData();
-            const returnData: INodeExecutionData[] = [];
-            const apiKey = credentials.apiKey;
+            const queryParams = new URLSearchParams();
+            if (mailingId) queryParams.set('mailingId', mailingId);
 
-            const unsubscribeContact = async (i: number, email: string) => {
-                const externalId = this.getNodeParameter('external_id', i, '') as string;
-                const mailingId = this.getNodeParameter('mailingId', i, '') as string;
+            const endpointBase = externalId
+                ? `https://api.maileon.com/1.0/contacts/externalid/${encodeURIComponent(externalId)}/unsubscribe`
+                : `https://api.maileon.com/1.0/contacts/email/${encodeURIComponent(email)}/unsubscribe`;
 
-                const queryParams = new URLSearchParams();
-                if (mailingId) queryParams.set('mailingId', mailingId);
+            const url = queryParams.toString() ? `${endpointBase}?${queryParams}` : endpointBase;
 
-                const endpointBase = externalId
-                    ? `https://api.maileon.com/1.0/contacts/externalid/${encodeURIComponent(externalId)}/unsubscribe`
-                    : `https://api.maileon.com/1.0/contacts/email/${encodeURIComponent(email)}/unsubscribe`;
+            return this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', {
+                method: 'DELETE',
+                url,
+            });
+        };
 
-                const url = queryParams.toString() ? `${endpointBase}?${queryParams}` : endpointBase;
+        const upsertContact = async (i: number, email: string) => {
+            const fieldMappings = this.getNodeParameter('contactFieldMapping.fields', i, []) as Array<{
+                field: string;
+                value: string;
+            }>;
 
-                return this.helpers.httpRequest({
-                    method: 'DELETE',
-                    url,
-                    headers: {
-                        Authorization: `Basic ${apiKey}`,
-                    },
-                });
-            };
-
-            const upsertContact = async (i: number, email: string) => {
-                const fieldMappings = this.getNodeParameter('contactFieldMapping.fields', i, []) as Array<{
-                    field: string;
-                    value: string;
-                }>;
-
-                const customResponse = await this.helpers.httpRequest({
+            const customResponse = await this.helpers.httpRequestWithAuthentication.call(
+                this,
+                'maileonApi',
+                {
                     method: 'GET',
                     url: 'https://api.maileon.com/1.0/contacts/fields/custom',
-                    headers: {Authorization: `Basic ${apiKey}`},
-                });
+                },
+            );
 
-                const customMap = getCustomFieldMap(customResponse);
+            const customMap = getCustomFieldMap(customResponse);
 
-                const standard_fields: Record<string, any> = {};
-                const custom_fields: Record<string, any> = {};
+            const standard_fields: Record<string, unknown> = {};
+            const custom_fields: Record<string, unknown> = {};
 
-                for (const {field, value} of fieldMappings) {
-                    const input = this.evaluateExpression(value, i);
-                    if (defaultContactFields[field]) standard_fields[field] = castToType(defaultContactFields[field], input);
-                    else if (customMap[field]) custom_fields[field] = castToType(customMap[field], input);
-                }
+            for (const { field, value } of fieldMappings) {
+                const input = this.evaluateExpression(value, i);
+                if (defaultContactFields[field])
+                    standard_fields[field] = castToType(defaultContactFields[field], input);
+                else if (customMap[field]) custom_fields[field] = castToType(customMap[field], input);
+            }
 
-                const permission = this.getNodeParameter('permission', i) as number;
-                const sync_mode = this.getNodeParameter('sync_mode', i) as string;
+            const permission = this.getNodeParameter('permission', i) as number;
+            const sync_mode = this.getNodeParameter('sync_mode', i) as string;
 
-                const doi = permission === 1 ? this.getNodeParameter('doi', i, false) as boolean : false;
-                const doiKey = permission === 1 ? this.getNodeParameter('doiKey', i, '') as string : '';
+            const doi = permission === 1 ? (this.getNodeParameter('doi', i, false) as boolean) : false;
+            const doiKey = permission === 1 ? (this.getNodeParameter('doiKey', i, '') as string) : '';
 
-                const queryParams = new URLSearchParams({
-                    permission: String(permission),
-                    sync_mode,
-                });
+            const queryParams = new URLSearchParams({
+                permission: String(permission),
+                sync_mode,
+            });
 
-                if (doi) queryParams.set('doi', 'true');
-                if (doi) queryParams.set('doiplus', 'true');
-                if (doiKey) queryParams.set('doimailing', doiKey);
+            if (doi) queryParams.set('doi', 'true');
+            if (doi) queryParams.set('doiplus', 'true');
+            if (doiKey) queryParams.set('doimailing', doiKey);
 
-                const externalId = this.getNodeParameter('external_id', i) as string;
+            const externalId = this.getNodeParameter('external_id', i) as string;
 
-                const url = externalId
-                    ? `https://api.maileon.com/1.0/contacts/externalid/${encodeURIComponent(externalId)}?${queryParams}`
-                    : `https://api.maileon.com/1.0/contacts/email/${encodeURIComponent(email)}?${queryParams}`;
+            const url = externalId
+                ? `https://api.maileon.com/1.0/contacts/externalid/${encodeURIComponent(externalId)}?${queryParams}`
+                : `https://api.maileon.com/1.0/contacts/email/${encodeURIComponent(email)}?${queryParams}`;
 
-                return this.helpers.httpRequest({
-                    method: 'POST',
-                    url,
-                    headers: {Authorization: `Basic ${apiKey}`, 'Content-Type': 'application/vnd.maileon.api+json'},
-                    body: {email, standard_fields, custom_fields},
-                    json: true,
-                });
-            };
+            return this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', {
+                method: 'POST',
+                url,
+                headers: { 'Content-Type': 'application/vnd.maileon.api+json' },
+                body: { email, standard_fields, custom_fields },
+                json: true,
+            });
+        };
 
-            for (let i = 0; i < items.length; i++) {
+        for (let i = 0; i < items.length; i++) {
+            try {
                 const operation = this.getNodeParameter('operation', i) as string;
                 const email = this.getNodeParameter('email', i) as string;
 
                 if (operation === 'sendContact') {
                     const res = await upsertContact(i, email);
-                    returnData.push({json: res});
+                    returnData.push({ json: res, pairedItem: { item: i } });
                 }
 
                 if (operation === 'sendContactEvent') {
@@ -546,33 +565,32 @@ export class Maileon implements INodeType {
                     const eventTypeKey = this.getNodeParameter('eventType', i) as string;
                     const fieldMappings = this.getNodeParameter('eventFieldMapping.fields', i, []) as Array<{
                         field: string;
-                        value: any;
+                        value: unknown;
                     }>;
 
-                    await this.helpers.httpRequest({
+                    await this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', {
                         method: 'GET',
                         url: `https://api.maileon.com/1.0/transactions/types/${eventTypeKey}`,
-                        headers: {Authorization: `Basic ${apiKey}`},
                     });
 
-                    const payload: Record<string, any> = {};
-                    for (const {field, value} of fieldMappings) {
+                    const payload: Record<string, unknown> = {};
+                    for (const { field, value } of fieldMappings) {
                         if (!value) continue;
-                        payload[field] = typeof value === 'string' ? this.evaluateExpression(value, i) : value;
+                        payload[field] =
+                            typeof value === 'string' ? this.evaluateExpression(value, i) : value;
                     }
 
                     const attributes = Object.fromEntries(
                         Object.entries(payload).map(([key, value]) => [key, value]),
                     );
 
-                    const res = await this.helpers.httpRequest({
+                    const res = await this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', {
                         method: 'POST',
                         url: 'https://api.maileon.com/1.0/transactions',
-                        headers: {Authorization: `Basic ${apiKey}`},
                         body: [
                             {
                                 typeName: eventTypeKey,
-                                contact: {email},
+                                contact: { email },
                                 content: attributes,
                             },
                         ],
@@ -582,24 +600,36 @@ export class Maileon implements INodeType {
                     const report = res?.reports?.[0];
 
                     if (!report?.queued) {
-                        throw new NodeApiError(this.getNode(), report, {
+                        throw new NodeApiError(this.getNode(), report as JsonObject, {
                             message: report?.message || 'Failed to queue Maileon transaction.',
+                            itemIndex: i,
                         });
                     }
-                    returnData.push({json: res});
+                    returnData.push({ json: res, pairedItem: { item: i } });
                 }
 
                 if (operation === 'unsubscribeContact') {
                     const res = await unsubscribeContact(i, email);
-                    returnData.push({json: {success: true, message: 'Unsubscribed successfully', response: res}});
+                    returnData.push({
+                        json: { success: true, message: 'Unsubscribed successfully', response: res },
+                        pairedItem: { item: i },
+                    });
                 }
+            } catch (error) {
+                if (this.continueOnFail()) {
+                    returnData.push({
+                        json: { error: (error as Error)?.message ?? 'Unknown error occurred' },
+                        pairedItem: { item: i },
+                    });
+                    continue;
+                }
+                throw new NodeApiError(this.getNode(), error as JsonObject, {
+                    message: (error as Error)?.message || 'Unknown error occurred',
+                    itemIndex: i,
+                });
             }
-
-            return [returnData];
-        } catch (error) {
-            throw new NodeApiError(this.getNode(), error as JsonObject, {
-                message: (error as Error)?.message || 'Unknown error occurred',
-            });
         }
+
+        return [returnData];
     }
 }

@@ -458,21 +458,6 @@ export class Maileon implements INodeType {
         const items = this.getInputData();
         const returnData: INodeExecutionData[] = [];
 
-        // Best-effort heartbeat ping; failures must not interrupt processing.
-        try {
-            await this.helpers.httpRequestWithAuthentication.call(this, 'maileonApi', {
-                method: 'GET',
-                url: 'https://integrations.maileon.com/xsic/ext/n8n/heartbeat.php',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                },
-                json: true,
-            });
-        } catch (error) {
-            this.logger.error(String(error));
-        }
-
         const unsubscribeContact = async (i: number, email: string) => {
             const externalId = this.getNodeParameter('external_id', i, '') as string;
             const mailingId = this.getNodeParameter('mailingId', i, '') as string;

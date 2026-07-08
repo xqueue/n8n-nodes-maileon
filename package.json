@@ -1,0 +1,55 @@
+{
+  "name": "n8n-nodes-maileon",
+  "version": "1.0.5",
+  "description": "n8n nodes for integrating with Maileon",
+  "author": "Maileon - qtr",
+  "license": "MIT",
+  "homepage": "https://github.com/xqueue/n8n-nodes-maileon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xqueue/n8n-nodes-maileon.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xqueue/n8n-nodes-maileon/issues"
+  },
+  "scripts": {
+    "build": "n8n-node build",
+    "build:watch": "tsc --watch",
+    "dev": "n8n-node dev",
+    "lint": "n8n-node lint",
+    "lint:fix": "n8n-node lint --fix",
+    "release": "n8n-node release",
+    "prepublishOnly": "n8n-node prerelease",
+    "postbuild": "cp dist/src/maileon-logo.svg dist/maileon-logo.svg && cp dist/src/maileon-logo-dark.svg dist/maileon-logo-dark.svg"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "maileon",
+    "email",
+    "marketing",
+    "automation"
+  ],
+  "devDependencies": {
+    "@n8n/node-cli": "^0.37.3",
+    "@types/node": "^20.11.30",
+    "gulp": "^4.0.2",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "^2.0.0"
+  },
+  "n8n": {
+    "credentials": [
+      "dist/MaileonApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/Maileon.node.js",
+      "dist/MaileonTrigger.node.js"
+    ]
+  }
+}

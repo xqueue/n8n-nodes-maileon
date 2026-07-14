@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-maileon",
-  "version": "1.0.9",
+  "version": "1.0.8",
   "description": "n8n nodes for integrating with Maileon",
   "author": {
     "name": "XQueue GmbH",
